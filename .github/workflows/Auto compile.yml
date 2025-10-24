@@ -217,6 +217,12 @@ jobs:
           exit 1
         fi
 
+    - name: ${{ matrix.platform }} download
+      run: |
+        cd sdk
+        make download -j$(nproc)
+        find dl -size -1024c -exec ls -l {} \;
+
     - name: Build packages
       run: |
         cd sdk
