@@ -86,19 +86,28 @@ jobs:
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
 
-    - name: Cache OpenWrt downloads
+    - name: Cache OpenWrt dl
       uses: actions/cache@v4
       with:
         path: sdk/dl
-        key: ${{ runner.os }}-openwrt-dl-${{ matrix.platform }}-${{ matrix.sdk_ver }}
+        key: ${{ runner.os }}-openwrt-${{ matrix.sdk_ver }}-${{ matrix.platform }}
 
-    - name: Download SDK
+    - name: ${{ matrix.platform }} sdk download
       run: |
-        file_name=openwrt-sdk-${{ matrix.platform }}.tar.zst
-        if [ ! -f "$file_name" ]; then
-          wget -O $file_name ${{ matrix.url_sdk }}
-        fi
-        mkdir sdk && tar --zstd -x -f $file_name -C ./sdk --strip-components=1
+        wget ${{ matrix.url_sdk }}
+        file_name=$(echo ${{matrix.url_sdk}} | awk -F/ '{print $NF}')
+        mkdir -p sdk
+        find sdk -mindepth 1 -maxdepth 1 ! -name dl -exec rm -rf {} +
+
+        if [[ $file_name == *.tar.xz ]]; then
+          tar -xJf $file_name -C ./sdk --strip-components=1
+        elif [[ $file_name == *.tar.zst ]]; then
+          tar --zstd -x -f $file_name -C ./sdk --strip-components=1
+        else
+          echo "Unsupported file format: $file_name"
+          exit 1
+         fi
+        cd sdk
           
     - name: SSH connection to Actions
       uses: mxschmitt/action-tmate@v3.23
