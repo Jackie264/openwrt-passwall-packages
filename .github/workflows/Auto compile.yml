@@ -26,7 +26,7 @@ env:
 jobs:
   job_auto_compile:
     runs-on: ubuntu-latest
-    name: test build (${{ matrix.platform }})
+    name: Matrix build (${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix:
