@@ -21,6 +21,7 @@ on:
 env:
   TZ: Asia/Shanghai
   packages: ${{ github.repository }}
+  passwall2: OneNAS-space/openwrt-passwall2
 
 jobs:
   job_auto_compile:
@@ -118,6 +119,7 @@ jobs:
         cd sdk
         cat > feeds.conf.default << EOF
         src-git passwall_packages https://github.com/${{ env.packages }}.git;main
+        src-git passwall2 https://github.com/${{ env.passwall2 }}.git;${{ github.ref_name }}
         src-git base https://github.com/openwrt/openwrt.git;openwrt-${{ matrix.sdk_ver }}
         src-git packages https://github.com/openwrt/packages.git;openwrt-${{ matrix.sdk_ver }}
         src-git luci https://github.com/openwrt/luci.git;openwrt-${{ matrix.sdk_ver }}
@@ -185,28 +187,27 @@ jobs:
         fi
 
     - name: Select packages into .config (all mode with whitelist)
+      if: env.MODE== 'all'
       run: |
         cd sdk
 
-        PKGS=(
-          chinadns-ng
-          geoview
-          hysteria
-          naiveproxy
-          shadowsocks-rust
-          shadowsocksr-libev
-          simple-obfs
-          sing-box
-          tcping
-          tuic-client
-          v2ray-plugin
-          xray-core
-        )
-
-        for PKG in "${PKGS[@]}"; do
-          echo "CONFIG_PACKAGE_${PKG}=m" >> .config
-          echo "Selected (all-mode): $PKG"
-        done
+        echo "CONFIG_PACKAGE_luci-app-passwall2=m" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_Iptables_Transparent_Proxy=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_Nftables_Transparent_Proxy=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Haproxy=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Hysteria=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_IPv6_Nat=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_NaiveProxy=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Shadowsocks_Libev_Client=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Shadowsocks_Libev_Server=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Shadowsocks_Rust_Client=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Shadowsocks_Rust_Server=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_ShadowsocksR_Libev_Client=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_ShadowsocksR_Libev_Server=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_Simple_Obfs=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_SingBox=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_tuic_client=y" >> .config
+        echo "CONFIG_PACKAGE_luci-app-passwall2_INCLUDE_V2ray_Plugin=y" >> .config
 
         make defconfig
 
