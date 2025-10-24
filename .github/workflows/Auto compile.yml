@@ -1,0 +1,267 @@
+name: Auto compile
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: "Enable SSH debug session"
+        required: false
+        default: "false"
+
+env:
+  TZ: Asia/Shanghai
+  packages: ${{ github.repository }}
+
+jobs:
+  job_auto_compile:
+    runs-on: ubuntu-latest
+    name: test build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x86_64
+            url_sdk: https://downloads.openwrt.org/releases/24.10.3/targets/x86/64/openwrt-sdk-24.10.3-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            sdk_ver: "24.10"
+
+          - platform: aarch64_cortex-a53
+            url_sdk: https://downloads.openwrt.org/releases/24.10.3/targets/qualcommax/ipq807x/openwrt-sdk-24.10.3-qualcommax-ipq807x_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            sdk_ver: "24.10"
+
+          - platform: arm_cortex-a7_neon-vfpv4
+            url_sdk: https://downloads.openwrt.org/releases/24.10.3/targets/ipq40xx/generic/openwrt-sdk-24.10.3-ipq40xx-generic_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
+            sdk_ver: "24.10"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@main
+      with:
+        fetch-depth: 0
+
+    - name: Setup variables
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          echo "BASE_SHA=$(git merge-base refs/remotes/origin/${{ github.base_ref }} ${{ github.event.pull_request.head.sha }})" >> $GITHUB_ENV
+          echo "HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+          echo "MODE=changed" >> $GITHUB_ENV
+        elif [ "${{ github.event_name }}" == "push" ]; then
+          echo "BASE_SHA=${{ github.event.before }}" >> $GITHUB_ENV
+          echo "HEAD_SHA=${{ github.event.after }}" >> $GITHUB_ENV
+          echo "MODE=changed" >> $GITHUB_ENV
+        else
+          echo "MODE=all" >> $GITHUB_ENV
+        fi
+
+    - name: Detect changed directories
+      if: env.MODE == 'changed'
+      id: detect-changes
+      run: |
+        CHANGED_DIRS=$(git diff --name-only $BASE_SHA $HEAD_SHA | awk -F'/' '{print $1}' | sort -u | tr '\n' ',')
+        CHANGED_DIRS=${CHANGED_DIRS%,}
+        echo "CHANGED_DIRS=$CHANGED_DIRS" >> $GITHUB_ENV
+        echo "Changed dirs: $CHANGED_DIRS"
+
+    - name: Init ${{ matrix.platform }} compile environment
+      run: |
+        sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
+            g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev \
+            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev \
+            libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano \
+            ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils \
+            python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs \
+            upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
+
+    - name: Cache OpenWrt downloads
+      uses: actions/cache@v4
+      with:
+        path: sdk/dl
+        key: ${{ runner.os }}-openwrt-dl-${{ matrix.platform }}-${{ matrix.sdk_ver }}
+
+    - name: Download SDK
+      run: |
+        file_name=openwrt-sdk-${{ matrix.platform }}.tar.zst
+        if [ ! -f "$file_name" ]; then
+          wget -O $file_name ${{ matrix.url_sdk }}
+        fi
+        mkdir sdk && tar --zstd -x -f $file_name -C ./sdk --strip-components=1
+          
+    - name: SSH connection to Actions
+      uses: mxschmitt/action-tmate@v3.13
+      if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
+
+    - name: Configure feeds and apply patches
+      run: |
+        cd sdk
+        cat > feeds.conf.default << EOF
+        src-git passwall_packages https://github.com/${{ env.packages }}.git;main
+        src-git base https://github.com/openwrt/openwrt.git;openwrt-${{ matrix.sdk_ver }}
+        src-git packages https://github.com/openwrt/packages.git;openwrt-${{ matrix.sdk_ver }}
+        src-git luci https://github.com/openwrt/luci.git;openwrt-${{ matrix.sdk_ver }}
+        src-git routing https://github.com/openwrt/routing.git;openwrt-${{ matrix.sdk_ver }}
+        src-git telephony https://github.com/openwrt/telephony.git;openwrt-${{ matrix.sdk_ver }}
+        EOF
+
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+        #--------------------------------------begin_patches------------------------------------------
+        echo "Start applying the patch"
+
+        rm -rf temp_resp
+        git clone -b master --single-branch https://github.com/openwrt/packages.git temp_resp
+        cd temp_resp
+        git checkout 2b99cd7d7637da0f152da378994f699aaf0dd44d
+        cd ..
+        echo "update golang version"
+        rm -rf feeds/packages/lang/golang
+        cp -r temp_resp/lang/golang feeds/packages/lang
+        echo "update rust version"
+        rm -rf feeds/packages/lang/rust
+        cp -r temp_resp/lang/rust feeds/packages/lang
+        rm -rf temp_resp
+
+        echo "fixed rust host build error"
+        sed -i 's/--set=llvm\.download-ci-llvm=false/--set=llvm.download-ci-llvm=true/' feeds/packages/lang/rust/Makefile
+        grep -q -- '--ci false \\' feeds/packages/lang/rust/Makefile || sed -i '/x\.py \\/a \        --ci false \\' feeds/packages/lang/rust/Makefile
+
+
+        echo "Patch application completed"
+        #--------------------------------------end_patches--------------------------------------------
+
+    - name: Generate minimal .config
+      run: |
+        cd sdk
+        echo "CONFIG_ALL_NONSHARED=n" > .config
+        echo "CONFIG_ALL_KMODS=n" >> .config
+        echo "CONFIG_ALL=n" >> .config
+        echo "CONFIG_AUTOREMOVE=n" >> .config
+        echo "CONFIG_SIGNED_PACKAGES=n" >> .config
+
+    - name: Select packages into .config (changed mode)
+      if: env.MODE == 'changed'
+      run: |
+        cd sdk
+        if [ -n "$CHANGED_DIRS" ]; then
+          IFS=',' read -ra DIRS <<< "$CHANGED_DIRS"
+          for DIR in "${DIRS[@]}"; do
+            MF="feeds/passwall_packages/$DIR/Makefile"
+            if [ -f "$MF" ]; then
+              PKG_NAME=$(awk -F '[:=]' '/^PKG_NAME[ \t]*[:=]/{print $2}' "$MF" | head -n1 | xargs)
+              [ -z "$PKG_NAME" ] && PKG_NAME="$DIR"
+              echo "CONFIG_PACKAGE_${PKG_NAME}=m" >> .config
+              echo "Selected (changed-mode): $PKG_NAME"
+            fi
+          done
+        fi
+        make defconfig
+        COUNT=$(grep -c '^CONFIG_PACKAGE_' .config || true)
+        if [ "$COUNT" -eq 0 ]; then
+          echo "❌ No changed packages detected, aborting build."
+          exit 1
+        fi
+
+    - name: Select packages into .config (all mode with whitelist)
+      run: |
+        cd sdk
+
+        PKGS=(
+          chinadns-ng
+          geoview
+          hysteria
+          naiveproxy
+          shadowsocks-rust
+          shadowsocksr-libev
+          simple-obfs
+          sing-box
+          tcping
+          tuic-client
+          v2ray-plugin
+          xray-core
+        )
+
+        for PKG in "${PKGS[@]}"; do
+          echo "CONFIG_PACKAGE_${PKG}=m" >> .config
+          echo "Selected (all-mode): $PKG"
+        done
+
+        make defconfig
+
+        COUNT=$(grep -c '^CONFIG_PACKAGE_' .config || true)
+        echo "Final package count: $COUNT"
+        if [ "$COUNT" -eq 0 ]; then
+          echo "❌ No packages selected in all-mode, aborting build."
+          exit 1
+        fi
+
+    - name: Build packages
+      run: |
+        cd sdk
+        if [ "${MODE}" = "changed" ] && [ -n "$CHANGED_DIRS" ]; then
+          IFS=',' read -ra DIRS <<< "$CHANGED_DIRS"
+          for DIR in "${DIRS[@]}"; do
+            echo "Compiling DIR: $DIR"
+            make package/$DIR/{clean,compile} -j$(nproc) V=s
+          done
+        else
+          PKGS=(
+            chinadns-ng
+            geoview
+            hysteria
+            naiveproxy
+            shadowsocks-rust
+            shadowsocksr-libev
+            simple-obfs
+            sing-box
+            tcping
+            tuic-client
+            v2ray-plugin
+            xray-core
+          )
+          echo "Building packages: ${PKGS[*]}"
+          for PKG in "${PKGS[@]}"; do
+            echo ">>> Building $PKG"
+            make package/$PKG/compile -j$(nproc) V=s
+          done
+        fi
+
+    - name: Checkout custom-packages repo
+      uses: actions/checkout@v4
+      with:
+        repository: OneNAS-space/custom-packages
+        token: ${{ secrets.CUSTOM_PACKAGES_TOKEN }}
+        path: custom-packages
+
+    - name: Copy build artifacts (replace old versions)
+      run: |
+        mkdir -p custom-packages/${{ matrix.platform }}
+        for f in $GITHUB_WORKSPACE/sdk/bin/packages/*/passwall_packages/*.ipk; do
+          base=$(basename "$f")
+          pkgname=$(echo "$base" | sed -E 's/^([a-zA-Z0-9\-_]+)_.*$/\1/')
+          echo "Cleaning old versions of $pkgname"
+          rm -f custom-packages/${{ matrix.platform }}/${pkgname}_*.ipk
+          cp "$f" custom-packages/${{ matrix.platform }}/
+        done
+
+    - name: Commit and push artifacts
+      run: |
+        cd custom-packages
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add .
+        git commit -m "Update build artifacts for ${{ matrix.platform }} - $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+        git push
