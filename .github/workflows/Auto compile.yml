@@ -255,29 +255,52 @@ jobs:
           done
         fi
 
-    - name: Checkout custom-packages repo
-      uses: actions/checkout@v4
-      with:
-        repository: OneNAS-space/custom-packages
-        token: ${{ secrets.CUSTOM_PACKAGES_TOKEN }}
-        path: custom-packages
-
-    - name: Copy build artifacts (replace old versions)
+    - name: Collect build artifacts
       run: |
-        mkdir -p custom-packages/${{ matrix.platform }}
+        mkdir -p staging/${{ matrix.platform }}
         for f in $GITHUB_WORKSPACE/sdk/bin/packages/*/passwall_packages/*.ipk; do
           base=$(basename "$f")
           pkgname=$(echo "$base" | sed -E 's/^([a-zA-Z0-9\-_]+)_.*$/\1/')
           echo "Cleaning old versions of $pkgname"
-          rm -f custom-packages/${{ matrix.platform }}/${pkgname}_*.ipk
-          cp "$f" custom-packages/${{ matrix.platform }}/
+          rm -f staging/${{ matrix.platform }}/${pkgname}_*.ipk
+          cp "$f" staging/${{ matrix.platform }}/
         done
 
-    - name: Commit and push artifacts
-      run: |
-        cd custom-packages
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add .
-        git commit -m "Update build artifacts for ${{ matrix.platform }} - $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
-        git push
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.platform }}
+        path: staging/${{ matrix.platform }}
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: job_auto_compile
+    steps:
+      - name: Checkout custom-packages repo
+        uses: actions/checkout@v4
+        with:
+          repository: OneNAS-space/custom-packages
+          token: ${{ secrets.CUSTOM_PACKAGES_TOKEN }}
+          path: custom-packages
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Copy artifacts into repo
+        run: |
+          for platform in artifacts/*; do
+            platename=$(basename "$platform")
+            mkdir -p custom-packages/$platename
+            cp -r $platform/* custom-packages/$platename/
+          done
+
+      - name: Commit and push
+        run: |
+          cd custom-packages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Update build artifacts for all platforms - $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes"
+          git push
