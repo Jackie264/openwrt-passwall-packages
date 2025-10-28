@@ -241,24 +241,11 @@ jobs:
     - name: Build packages
       run: |
         cd sdk
-        declare -A PKG_MAP
-        PKG_MAP["shadowsocks-libev"]="shadowsocks-libev-ss-local shadowsocks-libev-ss-redir shadowsocks-libev-ss-server"
-        PKG_MAP["shadowsocks-rust"]="shadowsocks-rust-sslocal shadowsocks-rust-ssserver"
-        PKG_MAP["shadowsocksr-libev"]="shadowsocksr-libev-ssr-local shadowsocksr-libev-ssr-redir shadowsocksr-libev-ssr-server"
-
         if [ "${MODE}" = "changed" ] && [ -n "$CHANGED_DIRS" ]; then
           IFS=',' read -ra DIRS <<< "$CHANGED_DIRS"
           for DIR in "${DIRS[@]}"; do
-            if [[ -n "${PKG_MAP[$DIR]:-}" ]]; then
-              echo "Expanding $DIR into: ${PKG_MAP[$DIR]}"
-              for PKG in ${PKG_MAP[$DIR]}; do
-                echo ">>> Building $PKG"
-                make package/$PKG/{clean,compile} -j$(nproc) V=s
-              done
-            else
-              echo ">>> Building $DIR"
-              make package/$DIR/{clean,compile} -j$(nproc) V=s
-            fi
+            echo "Compiling DIR: $DIR"
+            make package/$DIR/{clean,compile} -j$(nproc) V=s
           done
         else
           PKGS=(
