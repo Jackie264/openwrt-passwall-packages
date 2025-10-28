@@ -294,7 +294,14 @@ jobs:
           for platform in artifacts/*; do
             platename=$(basename "$platform")
             mkdir -p custom-packages/$platename
-            cp -r $platform/* custom-packages/$platename/
+            for f in "$platform"/*.ipk; do
+              [ -e "$f" ] || continue
+              base=$(basename "$f")
+              pkgname=$(echo "$base" | sed -E 's/^([a-zA-Z0-9\-_]+)_.*$/\1/')
+              echo "Cleaning old versions of $pkgname in $platename"
+              rm -f custom-packages/$platename/${pkgname}_*.ipk
+              cp "$f" custom-packages/$platename/
+            done
           done
 
       - name: Commit and push
