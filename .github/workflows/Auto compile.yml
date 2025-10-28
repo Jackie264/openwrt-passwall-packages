@@ -239,6 +239,7 @@ jobs:
             geoview
             hysteria
             naiveproxy
+            shadowsocks-libev
             shadowsocks-rust
             shadowsocksr-libev
             simple-obfs
