@@ -3,6 +3,9 @@
 # Description: Auto update packages v2
 #
 name: "Auto update packages v2"
+permissions:
+  contents: read
+  actions: write
 on:
   repository_dispatch:
   workflow_dispatch:
