@@ -308,7 +308,8 @@ jobs:
                 continue
               fi
               echo "Cleaning old versions of $pkgname in $platename"
-              rm -f custom-packages/$platename/${pkgname}_*.ipk
+              rm -f "custom-packages/$platename/${pkg}_*.ipk"
+              echo "Copy $base -> custom-packages/$platename/"
               cp "$f" custom-packages/$platename/
             done
           done
