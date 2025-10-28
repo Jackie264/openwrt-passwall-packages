@@ -252,7 +252,7 @@ jobs:
           echo "Building packages: ${PKGS[*]}"
           for PKG in "${PKGS[@]}"; do
             echo ">>> Building $PKG"
-            make package/$PKG/compile -j$(nproc) V=s
+            make package/$PKG/{clean,compile} -j$(nproc) V=s
           done
         fi
 
