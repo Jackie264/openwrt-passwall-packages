@@ -305,26 +305,27 @@ jobs:
         with:
           path: artifacts
 
-      - name: Copy artifacts into repo
+      - name: 📂 Copy artifacts into repo
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          for platform in artifacts/*; do
-            platename=$(basename "$platform")
-            mkdir -p custom-packages/$platename
-            for f in "$platform"/*.ipk; do
-              base=$(basename "$f")
-              pkg="${base%%_*}"
-              if [[ "$pkg" == "$base" ]]; then
-                echo "Skip unexpected filename without underscore: $base"
-                continue
-              fi
-              echo "Cleaning old versions of $pkg in $platename"
-              rm -f "custom-packages/$platename/${pkg}_*.ipk"
-              echo "Copy $base -> custom-packages/$platename/"
-              cp "$f" custom-packages/$platename/
-            done
+
+          find ./artifacts -type f -name "*.ipk" | while read -r f; do
+            base=$(basename "$f")
+            pkgname=$(echo "$base" | sed -E 's/^([^_]+)_.*$/\1/')
+            archdir=$(echo "$f" | sed -E 's#.*/artifacts/([^/]+)/.*#\1#')
+
+            echo "Processing $pkgname for arch $archdir"
+            mkdir -p custom-packages/$archdir
+
+            echo "Cleaning old versions of $pkgname in $archdir"
+            rm -f custom-packages/$archdir/${pkgname}_*.ipk
+
+            echo "Copy $base -> custom-packages/$archdir/"
+            cp "$f" custom-packages/$archdir/
           done
+
+          echo "📦 Final package tree:"
+          ls -laR custom-packages
 
       - name: Commit and push
         run: |
