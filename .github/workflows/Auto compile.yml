@@ -319,7 +319,7 @@ jobs:
                 echo "Skip unexpected filename without underscore: $base"
                 continue
               fi
-              echo "Cleaning old versions of $pkgname in $platename"
+              echo "Cleaning old versions of $pkg in $platename"
               rm -f "custom-packages/$platename/${pkg}_*.ipk"
               echo "Copy $base -> custom-packages/$platename/"
               cp "$f" custom-packages/$platename/
