@@ -169,15 +169,27 @@ jobs:
       if: env.MODE == 'changed'
       run: |
         cd sdk
+        declare -A PKG_MAP
+        PKG_MAP["shadowsocks-libev"]="shadowsocks-libev-ss-local shadowsocks-libev-ss-redir shadowsocks-libev-ss-server"
+        PKG_MAP["shadowsocks-rust"]="shadowsocks-rust-sslocal shadowsocks-rust-ssserver"
+        PKG_MAP["shadowsocksr-libev"]="shadowsocksr-libev-ssr-local shadowsocksr-libev-ssr-redir shadowsocksr-libev-ssr-server"
+
         if [ -n "$CHANGED_DIRS" ]; then
           IFS=',' read -ra DIRS <<< "$CHANGED_DIRS"
           for DIR in "${DIRS[@]}"; do
             MF="feeds/passwall_packages/$DIR/Makefile"
             if [ -f "$MF" ]; then
-              PKG_NAME=$(awk -F '[:=]' '/^PKG_NAME[ \t]*[:=]/{print $2}' "$MF" | head -n1 | xargs)
-              [ -z "$PKG_NAME" ] && PKG_NAME="$DIR"
-              echo "CONFIG_PACKAGE_${PKG_NAME}=m" >> .config
-              echo "Selected (changed-mode): $PKG_NAME"
+              if [[ -n "${PKG_MAP[$DIR]:-}" ]]; then
+                for PKG in ${PKG_MAP[$DIR]}; do
+                  echo "CONFIG_PACKAGE_${PKG}=m" >> .config
+                  echo "Selected (changed-mode): $PKG"
+                done
+              else
+                PKG_NAME=$(awk -F '[:=]' '/^PKG_NAME[ \t]*[:=]/{print $2}' "$MF" | head -n1 | xargs)
+                [ -z "$PKG_NAME" ] && PKG_NAME="$DIR"
+                echo "CONFIG_PACKAGE_${PKG_NAME}=m" >> .config
+                echo "Selected (changed-mode): $PKG_NAME"
+              fi
             fi
           done
         fi
@@ -229,11 +241,24 @@ jobs:
     - name: Build packages
       run: |
         cd sdk
+        declare -A PKG_MAP
+        PKG_MAP["shadowsocks-libev"]="shadowsocks-libev-ss-local shadowsocks-libev-ss-redir shadowsocks-libev-ss-server"
+        PKG_MAP["shadowsocks-rust"]="shadowsocks-rust-sslocal shadowsocks-rust-ssserver"
+        PKG_MAP["shadowsocksr-libev"]="shadowsocksr-libev-ssr-local shadowsocksr-libev-ssr-redir shadowsocksr-libev-ssr-server"
+
         if [ "${MODE}" = "changed" ] && [ -n "$CHANGED_DIRS" ]; then
           IFS=',' read -ra DIRS <<< "$CHANGED_DIRS"
           for DIR in "${DIRS[@]}"; do
-            echo "Compiling DIR: $DIR"
-            make package/$DIR/{clean,compile} -j$(nproc) V=s
+            if [[ -n "${PKG_MAP[$DIR]:-}" ]]; then
+              echo "Expanding $DIR into: ${PKG_MAP[$DIR]}"
+              for PKG in ${PKG_MAP[$DIR]}; do
+                echo ">>> Building $PKG"
+                make package/$PKG/{clean,compile} -j$(nproc) V=s
+              done
+            else
+              echo ">>> Building $DIR"
+              make package/$DIR/{clean,compile} -j$(nproc) V=s
+            fi
           done
         else
           PKGS=(
