@@ -295,6 +295,8 @@ jobs:
 
       - name: Copy artifacts into repo
         run: |
+          set -euo pipefail
+          shopt -s nullglob
           for platform in artifacts/*; do
             platename=$(basename "$platform")
             mkdir -p custom-packages/$platename
