@@ -4,6 +4,10 @@
 #
 name: Auto Cache Software Release JSONs
 
+permissions:
+  contents: write
+  actions: write
+
 on:
   schedule:
     - cron: '0 */2 * * *'
