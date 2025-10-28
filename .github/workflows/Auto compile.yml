@@ -1,4 +1,6 @@
 name: Auto compile
+permissions:
+  contents: read
 
 on:
   push:
@@ -276,6 +278,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     needs: job_auto_compile
+    permissions:
+      contents: write
     steps:
       - name: Checkout custom-packages repo
         uses: actions/checkout@v5
